@@ -1,19 +1,3 @@
-"""
-Энкодеры меток (category и target) для raw-пайплайна.
-
-Логика:
-  1. Если пути к .pkl указаны и файлы существуют — пробуем загрузить.
-  2. Проверяем, что загруженные энкодеры знают ВСЕ классы из train.
-  3. Если чего-то не хватает или загрузка не удалась — обучаем заново
-     и сохраняем в encoders/.
-
-Публичный API:
-  - to_str_array(arr) -> np.ndarray[str]
-  - fit_or_load_encoders(train_category, train_target,
-                         category_path, target_path)
-        -> (enc_cat, enc_tgt, cat_to_idx, tgt_to_idx,
-            idx_to_cat, idx_to_tgt)
-"""
 from __future__ import annotations
 
 import os

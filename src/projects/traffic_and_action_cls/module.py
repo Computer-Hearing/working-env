@@ -1,14 +1,3 @@
-"""
-LightningModule-обёртка над MobileNetAudio (две головы: category и target).
-
-Что делает:
-  - training_step / validation_step / test_step с общим _shared_step
-  - torchmetrics для acc/f1 по каждой голове + комбинированная acc_both
-  - predict_step, который возвращает сырые предсказания для TestSummary
-  - configure_optimizers с ReduceLROnPlateau на val_loss
-
-Ожидаемый формат батча: (x, y_category_onehot, y_target_onehot)
-"""
 from __future__ import annotations
 
 import torch
@@ -18,24 +7,7 @@ import lightning as L
 from torchmetrics import Accuracy, F1Score
 
 
-class LitAudioModel(L.LightningModule):
-    """
-    Parameters
-    ----------
-    model : nn.Module
-        Базовая модель, возвращающая (logits_cat, logits_tgt).
-    num_categories, num_targets : int
-        Число классов для torchmetrics.
-    lr : float
-        Learning rate.
-    weight_decay : float
-        Weight decay для Adam.
-    scheduler_factor : float
-        Множитель ReduceLROnPlateau (lr *= factor при плато).
-    scheduler_patience : int
-        Patience ReduceLROnPlateau в эпохах.
-    """
-
+class LitTrafficModule(L.LightningModule):
     def __init__(
         self,
         model: nn.Module,
@@ -45,6 +17,9 @@ class LitAudioModel(L.LightningModule):
         weight_decay: float = 0.0,
         scheduler_factor: float = 0.5,
         scheduler_patience: int = 5,
+        criterion_cat: nn.Module | None = None,
+        criterion_tgt: nn.Module | None = None,
+        loss_weights: tuple[float, float] = (1.0, 1.0)
     ):
         super().__init__()
         # save_hyperparameters логирует всё, кроме самой модели (её нельзя pickle-нуть в hparams)
@@ -74,6 +49,11 @@ class LitAudioModel(L.LightningModule):
         self.test_acc_tgt = Accuracy(task="multiclass", num_classes=num_targets)
         self.test_f1_cat = F1Score(task="multiclass", num_classes=num_categories, average="macro")
         self.test_f1_tgt = F1Score(task="multiclass", num_classes=num_targets, average="macro")
+        
+        # Если loss не передан, используем дефолтный CrossEntropy
+        self.criterion_cat = criterion_cat if criterion_cat is not None else nn.CrossEntropyLoss()
+        self.criterion_tgt = criterion_tgt if criterion_tgt is not None else nn.CrossEntropyLoss()
+        self.loss_weights = loss_weights
 
     # ------------------------------------------------------------------
     # Forward
@@ -93,9 +73,11 @@ class LitAudioModel(L.LightningModule):
 
         logits_cat, logits_tgt = self(x)
 
-        loss_cat = F.cross_entropy(logits_cat, y_cat)
-        loss_tgt = F.cross_entropy(logits_tgt, y_tgt)
-        loss = loss_cat + loss_tgt
+        loss_cat = self.criterion_cat(logits_cat, y_cat)
+        loss_tgt = self.criterion_tgt(logits_tgt, y_tgt)
+        
+        w_cat, w_tgt = self.loss_weights
+        loss = w_cat * loss_cat + w_tgt * loss_tgt
 
         # ---- Логирование loss ----
         self.log(f"{stage}_loss", loss, prog_bar=True, on_epoch=True, on_step=False)

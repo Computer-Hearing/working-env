@@ -1,33 +1,16 @@
-"""
-Графики обучения по history-словарю.
-
-Ожидаемые ключи (все опциональны — отсутствующие просто пропускаются):
-    train_loss, val_loss
-    train_acc_cat, train_acc_tgt, val_acc_cat, val_acc_tgt
-    train_f1_cat, train_f1_tgt, val_f1_cat, val_f1_tgt
-    train_acc_both, val_acc_both          ← combined accuracy
-    train_f1_mean, val_f1_mean            ← средний F1 (в таблице)
-    lr                                     ← learning rate
-"""
-from __future__ import annotations
-
 import os
-
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 def _has(history: dict, key: str) -> bool:
-    """Есть ли ключ и непустой ли список."""
+    """Проверяет, есть ли ключ и непустой ли список."""
     return key in history and bool(history[key])
 
-
 def _safe_legend(ax, *args, **kwargs):
-    """legend() только если есть artists с label (иначе UserWarning)."""
+    """legend() только если есть artists с label."""
     handles, labels = ax.get_legend_handles_labels()
     if handles:
         ax.legend(*args, **kwargs)
-
 
 def plot_history(history: dict, save_path: str | None = None):
     """
@@ -37,14 +20,7 @@ def plot_history(history: dict, save_path: str | None = None):
         [0,2] F1 (Cat vs Tgt)
         [1,0] Combined Accuracy (Cat & Tgt)
         [1,1] Learning Rate
-        [1,2] Сводка лучшей эпохи
-
-    Parameters
-    ----------
-    history : dict[str, list[float]]
-        Списки значений по эпохам.
-    save_path : str | None
-        Куда сохранить PNG. None — только показать.
+        [1,2] Сводная таблица лучшей эпохи
     """
     fig, axes = plt.subplots(2, 3, figsize=(16, 10))
 
@@ -108,7 +84,7 @@ def plot_history(history: dict, save_path: str | None = None):
         axes[0, 2].set_visible(False)
 
     # --------------------------------------------------------------
-    # [1,0] Combined Accuracy (обе головы угадали одновременно)
+    # [1,0] Combined Accuracy
     # --------------------------------------------------------------
     if _has(history, "val_acc_both"):
         if _has(history, "train_acc_both"):

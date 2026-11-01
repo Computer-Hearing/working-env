@@ -1,88 +1,20 @@
-"""
-Пайплайн для готовых мел-спектрограмм.
-
-Ожидает .npz с ключами:
-  - array1 : спектрограммы, shape (N, 256, 173) или (N, 1, 256, 173)
-  - array2 : one-hot категории, shape (N, 5)
-  - array3 : one-hot таргеты,   shape (N, 7)
-
-Аугментации — SpecAugment (time/freq masking, gain, noise) прямо над
-спектрограммой. Дешево по вычислениям, но менее физически осмысленно,
-чем аугментации над волной в DataPipelineRaw.
-
-Публичный API совпадает с DataPipelineRaw:
-
-    dm = DataPipelineDone(...)   # или DataPipelineRaw(...)
-    trainer.fit(lit_model, datamodule=dm)
-"""
-from __future__ import annotations
-
-import os
 from typing import Optional
-
 import numpy as np
-import torch
 from torch.utils.data import DataLoader
 import lightning as L
+import os
 
-from .spliter import split_data
-from .datasets.done import AudioDatasetDone
+from src.working_env.spliter import split_data
+from .dataset import AudioDatasetDone
 
 
 class DataPipelineDone(L.LightningDataModule):
-    """
-    LightningDataModule для готовых мел-спектрограмм.
-
-    Parameters
-    ----------
-    data_path : str
-        Путь к .npz с ключами ``array1``, ``array2``, ``array3``.
-    test_size, val_size : float
-        Доли test и val при сплите (0..1).
-    seed : int
-        Seed для сплита.
-    batch_size : int
-        Размер батча.
-    test_only : bool
-        Если True — создаётся только test-датасет (для инференса).
-    mode : str
-        'CNN' (добавляет канал) или 'GRU' (транспонирует время/частоту).
-    augment_train : bool
-        Включать ли SpecAugment на train.
-    time_mask_max, freq_mask_max : int
-        Максимальная ширина/высота маски.
-    n_masks : int
-        Сколько масок каждого типа применять.
-    gain_range : tuple[float, float]
-        Диапазон случайного усиления.
-    noise_sigma : float
-        Стд гауссова шума (0 — выключено).
-    mel_mean, mel_std : float
-        Параметры нормализации спектрограмм.
-    num_workers : int
-        Воркеры DataLoader.
-    """
-
     def __init__(
-        self,
-        data_path: str,
-        test_size: float,
-        val_size: float,
-        seed: int,
-        batch_size: int,
-        mode: str = "CNN",
-        test_only: bool = False,
-        # --- SpecAugment ---
-        augment_train: bool = True,
-        time_mask_max: int = 20,
-        freq_mask_max: int = 20,
-        n_masks: int = 2,
-        gain_range: tuple[float, float] = (0.8, 1.2),
-        noise_sigma: float = 0.0,
-        # --- нормализация ---
-        mel_mean: float = -41.9199,
-        mel_std: float = 17.9253,
-        num_workers: int = 0,
+        self, data_path: str, test_size: float, val_size: float, seed: int,
+        batch_size: int, mode: str = "Conv", test_only: bool = False,
+        augment_train: bool = True, time_mask_max: int = 20, freq_mask_max: int = 20,
+        n_masks: int = 2, gain_range: tuple[float, float] = (0.8, 1.2), noise_sigma: float = 0.0,
+        mel_mean: float = -41.9199, mel_std: float = 17.9253, num_workers: int = 0,
     ):
         super().__init__()
         self.save_hyperparameters()
