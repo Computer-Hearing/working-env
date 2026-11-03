@@ -26,3 +26,8 @@ seaborn>=0.12.0
 # --- Utils ---
 tqdm>=4.65.0
 rich>=13.0.0
+
+# --- Экспорт модели ---
+onnx>=1.14.0
+onnxruntime>=1.16.0
+onnxscript
