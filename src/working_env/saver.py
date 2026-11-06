@@ -7,7 +7,7 @@ from onnx import TensorProto
 
 class ModelSaver:
     """
-    Сохраняет веса, экспортирует модель в ONNX и генерирует config.pbtxt для Triton.
+    Сохраняет веса, экспортирует модель в ONNX (opset 18) и генерирует config.pbtxt для Triton.
     """
 
     def __init__(self, model: nn.Module, device: str = "cpu"):
@@ -15,7 +15,6 @@ class ModelSaver:
         self.device = device
 
     def save_weights(self, save_path: str):
-        """Сохраняет только state_dict (веса)."""
         os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
         torch.save(self.model.state_dict(), save_path)
         print(f"Веса сохранены: {save_path}")
@@ -27,14 +26,13 @@ class ModelSaver:
             input_names: list[str] = ["input"],
             output_names: list[str] = ["target_output"],
             dynamic_axes: dict = None,
+            opset_version: int = 18,
+            export_params: bool = True,
+            do_constant_folding: bool = True
     ):
-        """
-        Экспортирует модель в ONNX с поддержкой динамического батча.
-        """
         os.makedirs(os.path.dirname(onnx_path) or ".", exist_ok=True)
         self.model.eval()
 
-        # Если dynamic_axes не переданы, делаем батч динамическим по умолчанию
         if dynamic_axes is None:
             dynamic_axes = {
                 input_names[0]: {0: "batch_size"},
@@ -46,9 +44,9 @@ class ModelSaver:
                 self.model,
                 dummy_input,
                 onnx_path,
-                export_params=True,
-                opset_version=17,
-                do_constant_folding=True,
+                export_params=export_params,
+                opset_version=opset_version,
+                do_constant_folding=do_constant_folding,
                 input_names=input_names,
                 output_names=output_names,
                 dynamic_axes=dynamic_axes,
@@ -64,31 +62,14 @@ class ModelSaver:
             max_batch_size: int = 32,
             backend: str = "onnxruntime",
     ):
-        """
-        Генерирует config.pbtxt для Triton, читая метаданные из ONNX.
-        Автоматически подставляет имена входов/выходов и их размерности.
-        """
         onnx_model = onnx.load(onnx_path)
 
         inputs = []
         for inp in onnx_model.graph.input:
             name = inp.name
-            # Извлекаем размерности (пропускаем первую, если это batch)
             dims = [d.dim_value if d.dim_value > 0 else -1 for d in inp.type.tensor_type.shape.dim]
-
-            # Определяем тип данных
             dtype = inp.type.tensor_type.elem_type
-            if dtype == TensorProto.FLOAT:
-                data_type = "TYPE_FP32"
-            elif dtype == TensorProto.INT64:
-                data_type = "TYPE_INT64"
-            elif dtype == TensorProto.INT32:
-                data_type = "TYPE_INT32"
-            else:
-                data_type = "TYPE_FP32"
-
-            # Triton ожидает dims БЕЗ batch_size (если max_batch_size > 0)
-            # Отбрасываем первую ось (батч)
+            data_type = "TYPE_FP32" if dtype == TensorProto.FLOAT else "TYPE_INT64"
             input_dims = dims[1:] if len(dims) > 1 else dims
             inputs.append((name, data_type, input_dims))
 
@@ -96,19 +77,11 @@ class ModelSaver:
         for out in onnx_model.graph.output:
             name = out.name
             dims = [d.dim_value if d.dim_value > 0 else -1 for d in out.type.tensor_type.shape.dim]
-
             dtype = out.type.tensor_type.elem_type
-            if dtype == TensorProto.FLOAT:
-                data_type = "TYPE_FP32"
-            elif dtype == TensorProto.INT64:
-                data_type = "TYPE_INT64"
-            else:
-                data_type = "TYPE_FP32"
-
+            data_type = "TYPE_FP32" if dtype == TensorProto.FLOAT else "TYPE_INT64"
             output_dims = dims[1:] if len(dims) > 1 else dims
             outputs.append((name, data_type, output_dims))
 
-        # Генерируем текст конфига
         lines = [
             f'name: "{model_name}"',
             f'backend: "{backend}"',
@@ -141,10 +114,10 @@ class ModelSaver:
             output_names: list[str] = ["target_output"],
             dynamic_axes: dict = None,
             max_batch_size: int = 32,
+            opset_version: int = 18,
+            export_params: bool = True,
+            do_constant_folding: bool = True
     ):
-        """
-        Удобный метод: сохраняет веса, ONNX и pbtxt в одну папку.
-        """
         os.makedirs(save_dir, exist_ok=True)
 
         # 1. Веса
@@ -152,7 +125,8 @@ class ModelSaver:
 
         # 2. ONNX
         onnx_path = os.path.join(save_dir, f"{model_name}.onnx")
-        self.export_onnx(onnx_path, dummy_input, input_names, output_names, dynamic_axes)
+        self.export_onnx(onnx_path, dummy_input, input_names, output_names, dynamic_axes,
+                         opset_version, export_params, do_constant_folding)
 
         # 3. pbtxt
         pbtxt_path = os.path.join(save_dir, "config.pbtxt")
